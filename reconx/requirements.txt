@@ -1,0 +1,13 @@
+aiohttp>=3.8.1
+asyncio
+beautifulsoup4>=4.10.0
+dnspython
+whois
+python-wappalyzer
+requests>=2.28.1
+Flask
+plotly
+pandas
+gitpython>=3.1.30
+transformers>=4.30.0
+torch>=2.0.0

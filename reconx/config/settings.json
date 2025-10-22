@@ -1,0 +1,11 @@
+{
+  "threads": 10,
+  "output_dir": "results",
+  "api_keys": {
+    "shodan": "",
+	"github": "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",
+    "censys": "YOUR_CENSYS_API_KEY:YOUR_CENSYS_SECRET",
+    "virustotal": "5129efb5411ab549378ce4fd2d9dd7730f108ef5e496af37a6a362a4cfdb6edd",
+    "securitytrails": "DQOgsZx_h1vKi6aISgGS1Q6S6xq4bgpO"
+  }
+}

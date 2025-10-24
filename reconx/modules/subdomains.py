@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import socket
-from typing import List, Dict
+from typing import List, Dict, Optional
 from core import save_json, timestamp
 
 CRT_URL = "https://crt.sh/?q=%25.{domain}&output=json"
@@ -107,13 +107,31 @@ async def fetch_censys(domain: str, censys_auth: str = "", proxy: str = None) ->
         logging.error(f"Censys error: {str(e)}")
     return []
 
-def resolve_host(hostname: str) -> str:
+def resolve_host(hostname: str) -> Optional[str]:
     try:
         return socket.gethostbyname(hostname)
     except socket.gaierror:
         return None
 
-async def run_subdomain_enum(domain: str, config: Dict, proxy: str = None):
+async def check_port(host: str, port: int, timeout: float = 2.0) -> bool:
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(None, lambda: socket.create_connection((host, port), timeout))
+        return True
+    except Exception:
+        return False
+
+async def check_subdomain_http(subdomain: str) -> bool:
+    for port in [80, 443]:
+        if await check_port(subdomain, port):
+            return True
+    return False
+
+async def filter_http_subdomains(subdomains: List[str]) -> List[str]:
+    results = await asyncio.gather(*(check_subdomain_http(sd) for sd in subdomains))
+    return [sd for sd, open_port in zip(subdomains, results) if open_port]
+
+async def run_subdomain_enum(domain: str, config: Dict, proxy: Optional[str] = None):
     logging.info(f"Starting subdomain enumeration for {domain} with proxy {proxy}")
 
     vt_key = config.get("api_keys", {}).get("virustotal", "")
@@ -140,9 +158,21 @@ async def run_subdomain_enum(domain: str, config: Dict, proxy: str = None):
     for sd in subdomains:
         ip = resolve_host(sd)
         if ip:
-            live_hosts.append({"subdomain": sd, "ip": ip})
-            logging.info(f"Resolved live host: {sd} -> {ip}")
+            live_hosts.append(sd)
+    logging.info(f"Resolved {len(live_hosts)} live subdomains")
+
+    # Filter subdomains to only those with HTTP/S service (ports 80 or 443 open)
+    http_subdomains = await filter_http_subdomains(live_hosts)
+    logging.info(f"Filtered to {len(http_subdomains)} subdomains with HTTP(S) service")
+
+    live_hosts_info = []
+    for sd in http_subdomains:
+        ip = resolve_host(sd)
+        if ip:
+            live_hosts_info.append({"subdomain": sd, "ip": ip})
+            logging.info(f"HTTP live host: {sd} -> {ip}")
 
     output_path = f"results/{domain}_subdomains_{timestamp()}.json"
-    save_json(live_hosts, output_path)
-    logging.info(f"Subdomain enumeration complete for {domain}")
+    from core import save_json
+    save_json(live_hosts_info, output_path)
+    logging.info(f"Subdomain enumeration with HTTP port filtering complete for {domain}")

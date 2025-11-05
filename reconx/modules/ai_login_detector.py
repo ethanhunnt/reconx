@@ -9,6 +9,14 @@ from typing import List, Dict
 from urllib.parse import urljoin
 from transformers import pipeline
 
+import os
+
+# Huggingface/transformers model downloads should bypass the proxy and use system CA
+os.environ.pop("HTTP_PROXY", None)
+os.environ.pop("HTTPS_PROXY", None)
+os.environ.pop("REQUESTS_CA_BUNDLE", None)
+os.environ.pop("SSL_CERT_FILE", None)
+
 # Initialize zero-shot classification for login page detection
 classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
 

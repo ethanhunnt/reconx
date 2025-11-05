@@ -107,17 +107,17 @@ async def fetch_censys(domain: str, censys_auth: str = "", proxy: str = None) ->
         logging.error(f"Censys error: {str(e)}")
     return []
 
-def resolve_host(hostname: str) -> Optional[str]:
+async def resolve_host_async(hostname: str) -> Optional[str]:
+    loop = asyncio.get_running_loop()
     try:
-        return socket.gethostbyname(hostname)
+        return await loop.run_in_executor(None, lambda: socket.gethostbyname(hostname))
     except socket.gaierror:
         return None
 
 async def check_port(host: str, port: int, timeout: float = 2.0) -> bool:
     loop = asyncio.get_running_loop()
     try:
-        await loop.run_in_executor(None, lambda: socket.create_connection((host, port), timeout))
-        return True
+        return await loop.run_in_executor(None, lambda: socket.create_connection((host, port), timeout) is not None)
     except Exception:
         return False
 
@@ -154,9 +154,10 @@ async def run_subdomain_enum(domain: str, config: Dict, proxy: Optional[str] = N
     subdomains = sorted(set(sum(results, [])))
     logging.info(f"Total unique subdomains found: {len(subdomains)}")
 
+    # Async DNS 'live' check
     live_hosts = []
-    for sd in subdomains:
-        ip = resolve_host(sd)
+    dns_resolutions = await asyncio.gather(*(resolve_host_async(sd) for sd in subdomains))
+    for sd, ip in zip(subdomains, dns_resolutions):
         if ip:
             live_hosts.append(sd)
     logging.info(f"Resolved {len(live_hosts)} live subdomains")
@@ -166,13 +167,12 @@ async def run_subdomain_enum(domain: str, config: Dict, proxy: Optional[str] = N
     logging.info(f"Filtered to {len(http_subdomains)} subdomains with HTTP(S) service")
 
     live_hosts_info = []
-    for sd in http_subdomains:
-        ip = resolve_host(sd)
+    dns_final = await asyncio.gather(*(resolve_host_async(sd) for sd in http_subdomains))
+    for sd, ip in zip(http_subdomains, dns_final):
         if ip:
             live_hosts_info.append({"subdomain": sd, "ip": ip})
             logging.info(f"HTTP live host: {sd} -> {ip}")
 
     output_path = f"results/{domain}_subdomains_{timestamp()}.json"
-    from core import save_json
     save_json(live_hosts_info, output_path)
     logging.info(f"Subdomain enumeration with HTTP port filtering complete for {domain}")

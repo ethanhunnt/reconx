@@ -8,6 +8,13 @@ from urllib.parse import urljoin
 from typing import Dict, List
 from core import save_json, timestamp
 from transformers import pipeline
+import os
+
+# Huggingface/transformers model downloads should bypass the proxy and use system CA
+os.environ.pop("HTTP_PROXY", None)
+os.environ.pop("HTTPS_PROXY", None)
+os.environ.pop("REQUESTS_CA_BUNDLE", None)
+os.environ.pop("SSL_CERT_FILE", None)
 
 # Initialize NLP pipeline globally
 nlp_classifier = pipeline("text-classification", model="distilbert-base-uncased-finetuned-sst-2-english")
